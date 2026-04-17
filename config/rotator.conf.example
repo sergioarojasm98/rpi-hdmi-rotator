@@ -1,0 +1,42 @@
+# rpi-hdmi-rotator configuration
+# Copy to /etc/rpi-hdmi-rotator/rotator.conf and edit as needed.
+
+# --- Capture source (USB video device) ---
+DEVICE="/dev/video0"
+
+# Input format and resolution from the capture device.
+# For the Cam Link 4K, NV12 1080p@30 is the zero-copy optimum.
+INPUT_FORMAT="NV12"
+INPUT_WIDTH=1920
+INPUT_HEIGHT=1080
+FRAMERATE=30
+
+# --- Letterbox crop ---
+# Many sources (iPhone HDMI output) letterbox portrait content inside a
+# 1920x1080 landscape frame. For 9:16 content in a 16:9 frame, each side bar
+# is (1920 - 1920*9/16) / 2 = 656 pixels.
+# Set all to 0 to disable cropping.
+CROP_LEFT=656
+CROP_RIGHT=656
+CROP_TOP=0
+CROP_BOTTOM=0
+
+# --- Rotation ---
+# Valid values: clockwise, counterclockwise, rotate-180, none
+# Pick the value that matches the physical orientation of your monitor.
+ROTATION="counterclockwise"
+
+# --- Display target ---
+# DRM connector ID for the HDMI output. Find it with:
+#   sudo modetest -M vc4 -c
+# On Pi4 Bookworm/Trixie, HDMI0 (closest to USB-C) is typically 33.
+CONNECTOR_ID=33
+
+# --- Output scaling ---
+# Target resolution of the signal sent to the monitor. Keep at monitor native.
+OUTPUT_WIDTH=1920
+OUTPUT_HEIGHT=1080
+
+# --- Retry behaviour ---
+# Seconds to wait between retries when the capture device is missing.
+DEVICE_WAIT_SECONDS=3
