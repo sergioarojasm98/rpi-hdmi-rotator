@@ -1,0 +1,20 @@
+[Unit]
+Description=rpi-hdmi-rotator — headless HDMI video rotator
+Documentation=https://github.com/sergioarojasm98/rpi-hdmi-rotator
+After=systemd-udevd.service local-fs.target
+Wants=systemd-udevd.service
+
+[Service]
+Type=simple
+ExecStart=/opt/rpi-hdmi-rotator/bin/rotator.sh
+Restart=always
+RestartSec=5
+User=root
+StandardOutput=journal
+StandardError=journal
+
+# Take priority so the KMS/DRM pipeline gets CPU time under contention.
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target
