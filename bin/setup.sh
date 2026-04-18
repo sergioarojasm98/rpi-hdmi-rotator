@@ -541,8 +541,17 @@ test_run() {
     local pipeline=(
         gst-launch-1.0
         v4l2src "device=$DEVICE" "io-mode=mmap"
-        "!" "video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1"
     )
+    if [[ "$INPUT_ENCODING" == "mjpeg" ]]; then
+        pipeline+=(
+            "!" "image/jpeg,width=$INPUT_WIDTH,height=$INPUT_HEIGHT,framerate=$FRAMERATE/1"
+            "!" jpegdec
+        )
+    else
+        pipeline+=(
+            "!" "video/x-raw,format=$INPUT_FORMAT,width=$INPUT_WIDTH,height=$INPUT_HEIGHT,framerate=$FRAMERATE/1"
+        )
+    fi
     if (( CROP_LEFT > 0 || CROP_RIGHT > 0 || CROP_TOP > 0 || CROP_BOTTOM > 0 )); then
         pipeline+=(
             "!" videocrop
