@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-VERSION="1.1.1"
+VERSION="1.2.0"
 if [[ "${1:-}" == "--version" ]]; then
     echo "rpi-hdmi-rotator setup $VERSION"
     exit 0
@@ -271,10 +271,14 @@ calibrate_rotation() {
 select_source_preset() {
     header "Step 4: Source preset (letterbox crop)"
 
-    echo "Select your source device:"
-    echo "  1) iPhone 15 Pro Max or later (USB-C)  [default]"
-    echo "  2) Other iPhone with USB-C HDMI adapter"
-    echo "  3) Full-frame source (no letterbox)"
+    echo "iPhones send portrait content letterboxed inside a 1920x1080 landscape"
+    echo "frame. The crop values remove the black bars so the content fills the"
+    echo "monitor. For a standard 9:16 aspect ratio, each side bar is 656px."
+    echo
+    echo "Select your source:"
+    echo "  1) iPhone 15 Pro Max or later (USB-C) — crop 656px sides  [default]"
+    echo "  2) Other iPhone with USB-C HDMI adapter — same crop"
+    echo "  3) Full-frame source (no letterbox, no crop)"
     echo "  4) Custom crop values"
     echo
 
@@ -298,10 +302,15 @@ select_source_preset() {
             green "No crop — full frame."
             ;;
         4)
-            read -rp "  CROP_LEFT   [0]: " CROP_LEFT;   CROP_LEFT="${CROP_LEFT:-0}"
-            read -rp "  CROP_RIGHT  [0]: " CROP_RIGHT;  CROP_RIGHT="${CROP_RIGHT:-0}"
-            read -rp "  CROP_TOP    [0]: " CROP_TOP;    CROP_TOP="${CROP_TOP:-0}"
-            read -rp "  CROP_BOTTOM [0]: " CROP_BOTTOM; CROP_BOTTOM="${CROP_BOTTOM:-0}"
+            echo
+            echo "Enter pixels to remove from each edge of the 1920x1080 source."
+            echo "Reference: iPhone 9:16 letterbox = 656 left + 656 right."
+            echo "Press Enter to keep the default (shown in brackets)."
+            echo
+            read -rp "  CROP_LEFT   [656]: " CROP_LEFT;   CROP_LEFT="${CROP_LEFT:-656}"
+            read -rp "  CROP_RIGHT  [656]: " CROP_RIGHT;  CROP_RIGHT="${CROP_RIGHT:-656}"
+            read -rp "  CROP_TOP    [0]:   " CROP_TOP;    CROP_TOP="${CROP_TOP:-0}"
+            read -rp "  CROP_BOTTOM [0]:   " CROP_BOTTOM; CROP_BOTTOM="${CROP_BOTTOM:-0}"
             for v in "$CROP_LEFT" "$CROP_RIGHT" "$CROP_TOP" "$CROP_BOTTOM"; do
                 [[ "$v" =~ ^[0-9]+$ ]] || { red "Values must be non-negative integers."; exit 1; }
             done
@@ -311,7 +320,9 @@ select_source_preset() {
             if (( CROP_TOP + CROP_BOTTOM >= 1080 )); then
                 red "CROP_TOP + CROP_BOTTOM must be < 1080."; exit 1
             fi
-            green "Custom crop: L=$CROP_LEFT R=$CROP_RIGHT T=$CROP_TOP B=$CROP_BOTTOM"
+            local content_w=$((1920 - CROP_LEFT - CROP_RIGHT))
+            local content_h=$((1080 - CROP_TOP - CROP_BOTTOM))
+            green "Custom crop: L=$CROP_LEFT R=$CROP_RIGHT T=$CROP_TOP B=$CROP_BOTTOM → ${content_w}x${content_h} content"
             ;;
         *)
             red "Invalid choice."
@@ -403,8 +414,46 @@ test_run() {
     local answer
     read -rp "Did the live feed look correct? [y/N] " answer
     case "$answer" in
-        y|Y) green "Live test confirmed OK." ;;
-        *)   yellow "Re-run $0 to adjust settings."; return 1 ;;
+        y|Y) green "Live test confirmed OK."; return 0 ;;
+    esac
+
+    # Test failed — offer targeted recovery instead of starting over.
+    echo
+    echo "What looks wrong?"
+    echo "  1) Rotation is off (image sideways or upside-down)"
+    echo "  2) Crop is off (too much cut or black bars visible)"
+    echo "  3) Something else — re-run the full wizard"
+    echo "  4) Give up — restore previous config"
+    echo
+    read -rp "Choice [3]: " answer
+    answer="${answer:-3}"
+
+    case "$answer" in
+        1)
+            calibrate_rotation
+            write_config
+            test_run
+            ;;
+        2)
+            select_source_preset
+            write_config
+            test_run
+            ;;
+        3)
+            return 1
+            ;;
+        4)
+            # Restore the backup made in write_config.
+            local latest_bak
+            latest_bak=$(find "$CONFIG_DIR" -name "rotator.conf.bak.*" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+            if [[ -n "$latest_bak" ]]; then
+                cp "$latest_bak" "$CONFIG_FILE"
+                green "Previous config restored from $latest_bak"
+            else
+                yellow "No backup found to restore."
+            fi
+            return 1
+            ;;
     esac
 }
 
@@ -449,7 +498,14 @@ main() {
     calibrate_rotation
     select_source_preset
     write_config
-    test_run || yellow "Test run not confirmed — config still saved."
+    if ! test_run; then
+        local retry
+        read -rp "Re-run the full wizard from the start? [y/N] " retry
+        case "$retry" in
+            y|Y) main; return ;;
+            *)   yellow "Config left as-is. Edit manually or re-run $0." ;;
+        esac
+    fi
     finalize
 
     header "Done"
