@@ -5,6 +5,12 @@
 
 set -euo pipefail
 
+VERSION="1.0.0"
+if [[ "${1:-}" == "--version" ]]; then
+    echo "rpi-hdmi-rotator $VERSION"
+    exit 0
+fi
+
 CONFIG_FILE="${ROTATOR_CONFIG:-/etc/rpi-hdmi-rotator/rotator.conf}"
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
@@ -32,13 +38,35 @@ source "$CONFIG_FILE"
 : "${DEVICE_WAIT_SECONDS:=3}"
 
 log() { echo "[rotator] $*"; }
+die() { log "ERROR: $*" >&2; exit 1; }
+
+validate_config() {
+    local re='^[0-9]+$'
+    for v in INPUT_WIDTH INPUT_HEIGHT OUTPUT_WIDTH OUTPUT_HEIGHT FRAMERATE \
+             CROP_LEFT CROP_RIGHT CROP_TOP CROP_BOTTOM DEVICE_WAIT_SECONDS; do
+        [[ "${!v}" =~ $re ]] || die "$v must be a positive integer (got '${!v}')"
+    done
+    [[ -n "$CONNECTOR_ID" && ! "$CONNECTOR_ID" =~ $re ]] && \
+        die "CONNECTOR_ID must be empty or a positive integer (got '$CONNECTOR_ID')"
+    case "$ROTATION" in
+        clockwise|counterclockwise|rotate-180|none) ;;
+        *) die "ROTATION must be clockwise|counterclockwise|rotate-180|none (got '$ROTATION')" ;;
+    esac
+}
+
+validate_config
 
 wait_for_device() {
+    local attempts=0
     while [[ ! -e "$DEVICE" ]]; do
-        log "Waiting for capture device $DEVICE..."
+        attempts=$((attempts + 1))
+        # Log every 10th attempt to avoid journal spam when device is absent.
+        if [[ $((attempts % 10)) -eq 1 ]]; then
+            log "Waiting for capture device $DEVICE (attempt $attempts)..."
+        fi
         sleep "$DEVICE_WAIT_SECONDS"
     done
-    log "Capture device $DEVICE ready."
+    log "Capture device $DEVICE ready (after $attempts retries)."
 }
 
 build_pipeline() {
@@ -72,21 +100,14 @@ build_pipeline() {
     echo "${pipeline[@]}"
 }
 
-cleanup() {
-    log "Shutting down."
-    if [[ -n "${GST_PID:-}" ]]; then
-        kill -TERM "$GST_PID" 2>/dev/null || true
-    fi
-    exit 0
-}
-
-trap cleanup SIGTERM SIGINT
-
 wait_for_device
 
 PIPELINE=$(build_pipeline)
 log "Starting GStreamer pipeline:"
 log "gst-launch-1.0 $PIPELINE"
 
+# exec replaces this shell with gst-launch-1.0 so systemd (Type=simple)
+# manages the process directly: SIGTERM goes straight to GStreamer, exit
+# codes propagate, and there is no orphan wrapper.
 # shellcheck disable=SC2086
 exec gst-launch-1.0 $PIPELINE
