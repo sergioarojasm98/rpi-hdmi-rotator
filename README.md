@@ -85,7 +85,9 @@ Samsung 1080p monitor setup. Key parameters in `rotator.conf`:
 | `CROP_LEFT`/`RIGHT`/`TOP`/`BOTTOM` | Remove source letterboxing |
 | `ROTATION` | `clockwise`, `counterclockwise`, `rotate-180`, `none` |
 | `CONNECTOR_ID` | DRM connector for the HDMI output |
+| `INPUT_FORMAT` | Pixel format negotiated with capture (default `NV12`) |
 | `OUTPUT_WIDTH`/`HEIGHT` | Signal resolution sent to the monitor |
+| `DEVICE_WAIT_SECONDS` | Retry interval when capture device is missing |
 
 Find your connector ID with:
 
@@ -119,7 +121,15 @@ sudo /opt/rpi-hdmi-rotator/bin/rotator.sh
   set all `CROP_*` to `0`.
 - Resolutions above 1080p30 have not been tested (bandwidth and CPU
   headroom are fine on Pi4 for 1080p60 NV12 but not validated end-to-end).
-- Only single-tunnel single-monitor setups are supported.
+- Only single-source single-monitor setups are supported.
+
+## Uninstall
+
+```bash
+cd rpi-hdmi-rotator
+sudo ./uninstall.sh
+sudo reboot
+```
 
 ## License
 
