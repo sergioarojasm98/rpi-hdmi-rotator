@@ -140,26 +140,18 @@ detect_capture_device() {
 
 # Check whether the given device supports a specific (v4l2 fourcc, width,
 # height, framerate) tuple. Returns 0 if supported.
+# Uses mawk-compatible awk (no GNU-only match() capture groups).
 has_format() {
     local dev="$1" fourcc="$2" w="$3" h="$4" fps="$5"
-    local formats
+    local formats fps_tag
     formats=$(v4l2-ctl -d "$dev" --list-formats-ext 2>/dev/null || true)
-    # Match the format block, then within it the size block, then the fps.
-    echo "$formats" | awk -v f="$fourcc" -v s="${w}x${h}" -v p="$fps" '
-        /^\s*\[[0-9]+\]: '\''/ {
-            in_fmt = index($0, "'\''" f "'\''") > 0
-            in_size = 0
-        }
-        in_fmt && /Size: Discrete / {
-            in_size = index($0, " " s) > 0
-        }
-        in_fmt && in_size && /Interval: Discrete / {
-            # e.g. "Interval: Discrete 0.033s (30.000 fps)"
-            if (match($0, /\(([0-9.]+) fps\)/, m)) {
-                fps_val = m[1] + 0
-                if (fps_val == p + 0) { found = 1; exit }
-            }
-        }
+    # v4l2-ctl always prints fps as "(N.NNN fps)" with 3 decimals.
+    fps_tag="($(printf '%.3f' "$fps") fps)"
+    echo "$formats" | awk -v f="'$fourcc'" -v s=" ${w}x${h}" -v tag="$fps_tag" '
+        index($0, ": " f) { in_fmt = 1; in_size = 0; next }
+        /^\s*\[[0-9]+\]:/ { in_fmt = 0; next }
+        in_fmt && /Size: Discrete / { in_size = (index($0, s) > 0); next }
+        in_fmt && in_size && index($0, tag) { found = 1; exit }
         END { exit !found }
     '
 }
