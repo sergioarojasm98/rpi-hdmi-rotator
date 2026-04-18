@@ -4,12 +4,21 @@
 
 set -uo pipefail
 
+VERSION="1.0.0"
+if [[ "${1:-}" == "--version" ]]; then
+    echo "rpi-hdmi-rotator diagnose $VERSION"
+    exit 0
+fi
+
 CONFIG_FILE="${ROTATOR_CONFIG:-/etc/rpi-hdmi-rotator/rotator.conf}"
 
 green() { printf "\033[32m%s\033[0m\n" "$*"; }
 red()   { printf "\033[31m%s\033[0m\n" "$*"; }
 yellow(){ printf "\033[33m%s\033[0m\n" "$*"; }
 header(){ printf "\n\033[1m=== %s ===\033[0m\n" "$*"; }
+
+[[ $EUID -ne 0 ]] && yellow "Tip: run with sudo for complete results"
+echo
 
 header "System"
 uname -a
@@ -46,9 +55,11 @@ header "USB devices"
 lsusb | grep -iE "elgato|cam link|game capture|capture" || yellow "No known capture devices found"
 
 header "DRM connectors"
+found_hdmi=0
 for c in /sys/class/drm/card*-HDMI*; do
-    [[ -d "$c" ]] && echo "  $(basename "$c"): $(cat "$c/status")"
+    [[ -d "$c" ]] && { echo "  $(basename "$c"): $(cat "$c/status")"; found_hdmi=1; }
 done
+[[ $found_hdmi -eq 0 ]] && yellow "No HDMI connectors found"
 
 header "GStreamer plugins"
 for p in v4l2src videocrop videoflip videoscale videoconvert kmssink; do

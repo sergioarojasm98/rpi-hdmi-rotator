@@ -14,6 +14,10 @@ for arg in "$@"; do
             sed -n '1,10p' "$0"
             exit 0
             ;;
+        *)
+            echo "Unknown option: $arg" >&2
+            exit 1
+            ;;
     esac
 done
 
@@ -67,7 +71,7 @@ if [[ $SILENT_BOOT -eq 1 ]]; then
     # Quiet the kernel at boot.
     CMDLINE="/boot/firmware/cmdline.txt"
     if [[ -f "$CMDLINE" ]]; then
-        cp "$CMDLINE" "${CMDLINE}.bak.$(date +%s)"
+        cp -n "$CMDLINE" "${CMDLINE}.bak" 2>/dev/null || true
         for flag in "quiet" "logo.nologo" "loglevel=0" "vt.global_cursor_default=0"; do
             grep -qw "$flag" "$CMDLINE" || sed -i "1 s|\$| $flag|" "$CMDLINE"
         done
