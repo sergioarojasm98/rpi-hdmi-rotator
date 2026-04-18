@@ -86,7 +86,7 @@ build_pipeline() {
         pipeline+=( "!" "image/jpeg,width=$INPUT_WIDTH,height=$INPUT_HEIGHT,framerate=$FRAMERATE/1" )
         pipeline+=( "!" "jpegdec" )
     else
-        # USB 3.0 raw capture (Cam Link 4K etc.) — zero-copy, no decode needed.
+        # USB 3.0 raw capture (zero-copy, no decode needed).
         pipeline+=( "!" "video/x-raw,format=$INPUT_FORMAT,width=$INPUT_WIDTH,height=$INPUT_HEIGHT,framerate=$FRAMERATE/1" )
     fi
 

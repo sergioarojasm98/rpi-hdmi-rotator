@@ -1,8 +1,8 @@
 # rpi-hdmi-rotator
 
-Headless HDMI video rotator for Raspberry Pi 4. Captures USB video (Elgato
-Cam Link 4K, generic UVC capture sticks), rotates the signal in software,
-and displays it fullscreen on a physically-rotated monitor via KMS/DRM.
+Headless HDMI video rotator for Raspberry Pi 4. Captures USB video from any
+UVC-compatible HDMI capture card, rotates the signal in software, and
+displays it fullscreen on a physically-rotated monitor via KMS/DRM.
 
 ## Why
 
@@ -18,10 +18,10 @@ the monitor produces a correctly-oriented fullscreen image.
 ```mermaid
 flowchart LR
     iPhone[iPhone /<br/>HDMI source] --> Adapter[USB-C to<br/>HDMI adapter]
-    Adapter --> CamLink[Cam Link 4K<br/>USB 3.0]
-    CamLink --> Pi4
+    Adapter --> Capture[HDMI Capture<br/>Card USB]
+    Capture --> Pi4
     subgraph Pi4["Raspberry Pi 4"]
-        Capture[v4l2src<br/>NV12 1080p30] --> Crop[videocrop<br/>remove letterbox]
+        Source[v4l2src<br/>raw or MJPEG] --> Crop[videocrop<br/>remove letterbox]
         Crop --> Flip[videoflip<br/>90°]
         Flip --> Scale[videoscale<br/>stretch to 1920x1080]
         Scale --> Sink[kmssink<br/>HDMI0 / connector 33]
@@ -44,20 +44,28 @@ rotation in viewing space.
 | Display | kmssink (DRM/KMS, no X11, no Wayland) |
 | Service | systemd |
 
-## Hardware tested
+## Hardware
 
-- Raspberry Pi 4 Model B (4GB)
-- Samsung 1920x1080 monitor, physically rotated 90°
-- iPhone 15 Pro Max via USB-C → HDMI adapter
+### Requirements
 
-Capture card options:
+- Raspberry Pi 4 Model B (4GB recommended)
+- Any UVC-compatible HDMI capture card (USB)
+- 1920x1080 monitor, physically rotated 90°
+- iPhone 15 Pro Max or later via USB-C → HDMI adapter
+
+### Tested capture cards
+
+Any HDMI-to-USB capture card that presents as a standard UVC device should
+work. The setup wizard auto-detects encoding (raw or MJPEG) and resolution.
 
 | Card | Bus | Encoding | Price | Notes |
 |------|-----|----------|-------|-------|
-| Elgato Cam Link 4K | USB 3.0 | Raw NV12/YUYV | ~$130 | Zero-copy, lowest latency |
-| Generic MS2109 | USB 2.0 | MJPEG only | ~$15-30 | CPU decode, Pi4 has ample headroom |
+| Elgato Cam Link 4K | USB 3.0 | Raw NV12 | ~$130 | Zero-copy, lowest latency, best quality |
+| Generic MS2109 (no loop) | USB 2.0 | MJPEG | ~$10-15 | Budget option, good enough for viewfinder |
+| Generic MS2109 (with loop) | USB 2.0 | MJPEG | ~$20-30 | Budget + HDMI passthrough |
 
-Both are auto-detected by the setup wizard.
+**Note:** avoid connecting two USB 2.0 sticks simultaneously — the Pi4's
+USB ports may not deliver enough power for both.
 
 ## Install
 
@@ -96,8 +104,8 @@ sudo /opt/rpi-hdmi-rotator/bin/setup.sh
 ## Configuration
 
 The recommended way to configure is the setup wizard
-(`sudo /opt/rpi-hdmi-rotator/bin/setup.sh`). The defaults target the iPhone
-15 Pro Max + Cam Link 4K + physically-rotated Samsung 1080p monitor setup.
+(`sudo /opt/rpi-hdmi-rotator/bin/setup.sh`). It auto-detects your capture
+card and picks the best encoding automatically.
 
 Manual editing of `/etc/rpi-hdmi-rotator/rotator.conf` is also supported.
 Key parameters:
@@ -109,7 +117,8 @@ Key parameters:
 | `CROP_LEFT`/`RIGHT`/`TOP`/`BOTTOM` | Remove source letterboxing |
 | `ROTATION` | `clockwise`, `counterclockwise`, `rotate-180`, `none` |
 | `CONNECTOR_ID` | DRM connector for the HDMI output |
-| `INPUT_FORMAT` | Pixel format negotiated with capture (default `NV12`) |
+| `INPUT_ENCODING` | `raw` (USB 3.0 cards) or `mjpeg` (USB 2.0 sticks) |
+| `INPUT_FORMAT` | Pixel format for raw mode (`NV12`, `YUY2`) |
 | `OUTPUT_WIDTH`/`HEIGHT` | Signal resolution sent to the monitor |
 | `DEVICE_WAIT_SECONDS` | Retry interval when capture device is missing |
 

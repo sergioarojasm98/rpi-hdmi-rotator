@@ -56,7 +56,7 @@ else
 fi
 
 header "USB devices"
-lsusb | grep -iE "elgato|cam link|game capture|capture" || yellow "No known capture devices found"
+lsusb | grep -iE "elgato|cam link|game capture|capture|macrosilicon|video" || yellow "No known capture devices found"
 
 header "DRM connectors"
 found_hdmi=0

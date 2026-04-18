@@ -5,7 +5,7 @@
 DEVICE="/dev/video0"
 
 # Input encoding from the capture device:
-#   raw   — uncompressed stream (Cam Link 4K and other USB 3.0 cards)
+#   raw   — uncompressed stream (USB 3.0 capture cards)
 #           Use INPUT_FORMAT=NV12 (zero-copy) or YUY2.
 #   mjpeg — compressed MJPEG (MS2109 cheap USB 2.0 sticks)
 #           INPUT_FORMAT is ignored; a jpegdec is inserted in the pipeline.

@@ -107,7 +107,7 @@ detect_capture_device() {
     done
 
     if [[ ${#candidates[@]} -eq 0 ]]; then
-        red "No USB capture device detected. Plug in your Cam Link (or equivalent) and re-run."
+        red "No USB capture device detected. Plug in your HDMI capture card and re-run."
         exit 1
     fi
 
@@ -162,7 +162,7 @@ detect_input_format() {
     # Preference order from best (zero-copy, low latency) to acceptable
     # (compressed, decoder on CPU). Format is "fourcc:encoding:width:height:fps".
     local preferences=(
-        "NV12:raw:NV12:1920:1080:30"       # Cam Link 4K (USB 3.0)
+        "NV12:raw:NV12:1920:1080:30"       # USB 3.0 cards (raw, zero-copy)
         "YUYV:raw:YUY2:1920:1080:30"       # raw fallback
         "MJPG:mjpeg::1920:1080:30"         # MS2109 cheap sticks (USB 2.0)
         "MJPG:mjpeg::1920:1080:25"         # MS2109 low-fps fallback
