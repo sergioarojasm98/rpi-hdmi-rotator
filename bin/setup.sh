@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-VERSION="1.1.0"
+VERSION="1.1.1"
 if [[ "${1:-}" == "--version" ]]; then
     echo "rpi-hdmi-rotator setup $VERSION"
     exit 0
@@ -89,14 +89,16 @@ detect_capture_device() {
         [[ -c "$node" ]] || continue
         local info
         info=$(v4l2-ctl -d "$node" --info 2>/dev/null || true)
-        # Only UVC devices (USB capture) with Video Capture capability
-        if echo "$info" | grep -q "Driver name *: uvcvideo" && \
-           echo "$info" | grep -q "Video Capture"; then
-            local card
-            card=$(echo "$info" | awk -F': ' '/Card type/ {print $2; exit}')
-            candidates+=("$node")
-            names+=("${card:-unknown}")
-        fi
+        # Must be UVC (USB capture). Pi built-in drivers use pispbe/rpi-hevc-dec.
+        echo "$info" | grep -q "Driver name *: uvcvideo" || continue
+        # Must expose an actual Video Capture interface — list-formats returns
+        # nothing for metadata-only nodes that also report "Video Capture"
+        # under driver Capabilities.
+        v4l2-ctl -d "$node" --list-formats 2>/dev/null | grep -q "^\s*\[" || continue
+        local card
+        card=$(echo "$info" | awk -F': ' '/Card type/ {print $2; exit}')
+        candidates+=("$node")
+        names+=("${card:-unknown}")
     done
 
     if [[ ${#candidates[@]} -eq 0 ]]; then
