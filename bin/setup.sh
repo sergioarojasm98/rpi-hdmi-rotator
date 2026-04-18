@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 if [[ "${1:-}" == "--version" ]]; then
     echo "rpi-hdmi-rotator setup $VERSION"
     exit 0
@@ -212,7 +212,16 @@ calibrate_rotation() {
 
     echo "A SMPTE color-bar test pattern will be shown on the monitor."
     echo "For each rotation option, answer whether the pattern looks correct."
-    echo "Correct = color bars VERTICAL, text readable left-to-right, no mirror."
+    echo
+    echo "A correctly-oriented SMPTE pattern has THREE horizontal bands stacked"
+    echo "from top to bottom on your physical screen:"
+    echo "  - TOP    (~2/3 of screen): 7 tall vertical color bars"
+    echo "           (white, yellow, cyan, green, magenta, red, blue)"
+    echo "  - MIDDLE (thin strip):     7 shorter reversed bars"
+    echo "  - BOTTOM (~1/4 of screen): PLUGE/noise section (darker, grainy gray block)"
+    echo
+    echo "If the PLUGE/noise section is on top, or on the side, or the color"
+    echo "order is flipped — answer N and try the next option."
     echo
 
     stop_service_if_running
