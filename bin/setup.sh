@@ -1,0 +1,458 @@
+#!/bin/bash
+# rpi-hdmi-rotator — interactive setup wizard.
+# Detects capture device and DRM connector, calibrates rotation, and writes
+# /etc/rpi-hdmi-rotator/rotator.conf based on user choices.
+
+set -euo pipefail
+
+VERSION="1.1.0"
+if [[ "${1:-}" == "--version" ]]; then
+    echo "rpi-hdmi-rotator setup $VERSION"
+    exit 0
+fi
+
+if [[ $EUID -ne 0 ]]; then
+    echo "Run with sudo." >&2
+    exit 1
+fi
+
+CONFIG_DIR="/etc/rpi-hdmi-rotator"
+CONFIG_FILE="$CONFIG_DIR/rotator.conf"
+SERVICE_NAME="rpi-hdmi-rotator.service"
+
+green()  { printf "\033[32m%s\033[0m\n" "$*"; }
+red()    { printf "\033[31m%s\033[0m\n" "$*"; }
+yellow() { printf "\033[33m%s\033[0m\n" "$*"; }
+header() { printf "\n\033[1m=== %s ===\033[0m\n" "$*"; }
+
+# Populated by the wizard steps.
+DEVICE=""
+CONNECTOR_ID=""
+ROTATION=""
+CROP_LEFT=0
+CROP_RIGHT=0
+CROP_TOP=0
+CROP_BOTTOM=0
+
+GSTPID=""
+
+cleanup_gst() {
+    if [[ -n "$GSTPID" ]] && kill -0 "$GSTPID" 2>/dev/null; then
+        kill "$GSTPID" 2>/dev/null || true
+        wait "$GSTPID" 2>/dev/null || true
+    fi
+    GSTPID=""
+}
+trap cleanup_gst EXIT
+
+# Launch GStreamer in the background; aborts the wizard if it dies within 2s.
+launch_gst_bg() {
+    local cmd=("$@")
+    "${cmd[@]}" >/tmp/rotator-setup.log 2>&1 &
+    GSTPID=$!
+    sleep 2
+    if ! kill -0 "$GSTPID" 2>/dev/null; then
+        red "GStreamer pipeline failed to start. Check /tmp/rotator-setup.log:"
+        tail -5 /tmp/rotator-setup.log >&2
+        GSTPID=""
+        return 1
+    fi
+    return 0
+}
+
+stop_service_if_running() {
+    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        yellow "Stopping $SERVICE_NAME for calibration (will offer to restart at the end)..."
+        systemctl stop "$SERVICE_NAME"
+        SERVICE_WAS_RUNNING=1
+    else
+        SERVICE_WAS_RUNNING=0
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Step 1: Capture device detection
+# -----------------------------------------------------------------------------
+detect_capture_device() {
+    header "Step 1: Capture device"
+
+    if ! command -v v4l2-ctl >/dev/null 2>&1; then
+        yellow "v4l2-ctl not installed — install v4l-utils or enter device manually."
+        read -rp "Device path (e.g., /dev/video0): " DEVICE
+        [[ -e "$DEVICE" ]] || { red "Device $DEVICE does not exist."; exit 1; }
+        return
+    fi
+
+    local candidates=()
+    local names=()
+    for node in /dev/video*; do
+        [[ -c "$node" ]] || continue
+        local info
+        info=$(v4l2-ctl -d "$node" --info 2>/dev/null || true)
+        # Only UVC devices (USB capture) with Video Capture capability
+        if echo "$info" | grep -q "Driver name *: uvcvideo" && \
+           echo "$info" | grep -q "Video Capture"; then
+            local card
+            card=$(echo "$info" | awk -F': ' '/Card type/ {print $2; exit}')
+            candidates+=("$node")
+            names+=("${card:-unknown}")
+        fi
+    done
+
+    if [[ ${#candidates[@]} -eq 0 ]]; then
+        red "No USB capture device detected. Plug in your Cam Link (or equivalent) and re-run."
+        exit 1
+    fi
+
+    if [[ ${#candidates[@]} -eq 1 ]]; then
+        DEVICE="${candidates[0]}"
+        green "Auto-selected: $DEVICE (${names[0]})"
+        return
+    fi
+
+    echo "Multiple capture devices found:"
+    local i
+    for i in "${!candidates[@]}"; do
+        printf "  %d) %s — %s\n" $((i + 1)) "${candidates[i]}" "${names[i]}"
+    done
+    local choice
+    while true; do
+        read -rp "Pick [1-${#candidates[@]}]: " choice
+        if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#candidates[@]} )); then
+            DEVICE="${candidates[$((choice - 1))]}"
+            green "Selected: $DEVICE (${names[$((choice - 1))]})"
+            return
+        fi
+        red "Invalid choice."
+    done
+}
+
+# -----------------------------------------------------------------------------
+# Step 2: DRM connector detection
+# -----------------------------------------------------------------------------
+detect_connector() {
+    header "Step 2: HDMI connector"
+
+    # Find physically connected HDMI connector names from sysfs.
+    local connected_names=()
+    for c in /sys/class/drm/card*-HDMI*; do
+        [[ -d "$c" ]] || continue
+        if [[ "$(cat "$c/status" 2>/dev/null)" == "connected" ]]; then
+            local name
+            name=$(basename "$c" | sed 's/.*-\(HDMI-[A-Z]-[0-9]*\)$/\1/')
+            connected_names+=("$name")
+        fi
+    done
+
+    if [[ ${#connected_names[@]} -eq 0 ]]; then
+        red "No HDMI monitor detected. Check the cable and re-run."
+        exit 1
+    fi
+
+    if ! command -v modetest >/dev/null 2>&1; then
+        yellow "modetest not installed (libdrm-tests). Enter connector ID manually."
+        yellow "Connected: ${connected_names[*]}"
+        read -rp "Connector ID (numeric): " CONNECTOR_ID
+        [[ "$CONNECTOR_ID" =~ ^[0-9]+$ ]] || { red "Invalid connector ID."; exit 1; }
+        return
+    fi
+
+    # Parse modetest output to map name -> numeric ID.
+    local modetest_out
+    modetest_out=$(modetest -M vc4 -c 2>/dev/null || true)
+
+    local connected_ids=()
+    local connected_labels=()
+    for name in "${connected_names[@]}"; do
+        local id
+        id=$(echo "$modetest_out" | awk -v n="$name" '$3 == "connected" && $4 == n {print $1; exit}')
+        if [[ -n "$id" ]]; then
+            connected_ids+=("$id")
+            connected_labels+=("$name (connector $id)")
+        fi
+    done
+
+    if [[ ${#connected_ids[@]} -eq 0 ]]; then
+        red "Could not resolve connector IDs via modetest. Manual input required."
+        read -rp "Connector ID (numeric): " CONNECTOR_ID
+        [[ "$CONNECTOR_ID" =~ ^[0-9]+$ ]] || { red "Invalid connector ID."; exit 1; }
+        return
+    fi
+
+    if [[ ${#connected_ids[@]} -eq 1 ]]; then
+        CONNECTOR_ID="${connected_ids[0]}"
+        green "Auto-selected: ${connected_labels[0]}"
+        return
+    fi
+
+    echo "Multiple HDMI outputs connected:"
+    local i
+    for i in "${!connected_ids[@]}"; do
+        printf "  %d) %s\n" $((i + 1)) "${connected_labels[i]}"
+    done
+    local choice
+    while true; do
+        read -rp "Pick [1-${#connected_ids[@]}]: " choice
+        if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#connected_ids[@]} )); then
+            CONNECTOR_ID="${connected_ids[$((choice - 1))]}"
+            green "Selected: ${connected_labels[$((choice - 1))]}"
+            return
+        fi
+        red "Invalid choice."
+    done
+}
+
+# -----------------------------------------------------------------------------
+# Step 3: Rotation calibration
+# -----------------------------------------------------------------------------
+calibrate_rotation() {
+    header "Step 3: Rotation calibration"
+
+    echo "A SMPTE color-bar test pattern will be shown on the monitor."
+    echo "For each rotation option, answer whether the pattern looks correct."
+    echo "Correct = color bars VERTICAL, text readable left-to-right, no mirror."
+    echo
+
+    stop_service_if_running
+
+    local options=("counterclockwise" "clockwise" "rotate-180" "none")
+    local opt
+    for opt in "${options[@]}"; do
+        echo "Trying rotation: $opt"
+
+        local pipeline=(
+            gst-launch-1.0
+            videotestsrc pattern=smpte
+            "!" "video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1"
+            "!" videoflip "method=$opt"
+            "!" videoscale "add-borders=false"
+            "!" "video/x-raw,width=1920,height=1080,pixel-aspect-ratio=1/1"
+            "!" videoconvert
+            "!" kmssink "sync=false" "connector-id=$CONNECTOR_ID"
+        )
+
+        if ! launch_gst_bg "${pipeline[@]}"; then
+            red "Could not display test pattern with method=$opt. Skipping."
+            continue
+        fi
+
+        local answer
+        read -rp "Does the test pattern look correct? [y/N/q=quit] " answer
+        cleanup_gst
+
+        case "$answer" in
+            y|Y)
+                ROTATION="$opt"
+                green "Rotation set to: $ROTATION"
+                return
+                ;;
+            q|Q)
+                red "Calibration aborted."
+                exit 1
+                ;;
+            *)
+                ;;
+        esac
+    done
+
+    red "None of the rotation options produced a correct image."
+    read -rp "Enter rotation manually (clockwise/counterclockwise/rotate-180/none): " ROTATION
+    case "$ROTATION" in
+        clockwise|counterclockwise|rotate-180|none) ;;
+        *) red "Invalid rotation."; exit 1 ;;
+    esac
+}
+
+# -----------------------------------------------------------------------------
+# Step 4: Source preset selection
+# -----------------------------------------------------------------------------
+select_source_preset() {
+    header "Step 4: Source preset (letterbox crop)"
+
+    echo "Select your source device:"
+    echo "  1) iPhone 15 Pro Max or later (USB-C)  [default]"
+    echo "  2) Other iPhone with USB-C HDMI adapter"
+    echo "  3) Full-frame source (no letterbox)"
+    echo "  4) Custom crop values"
+    echo
+
+    local choice
+    read -rp "Choice [1]: " choice
+    choice="${choice:-1}"
+
+    case "$choice" in
+        1|2)
+            CROP_LEFT=656
+            CROP_RIGHT=656
+            CROP_TOP=0
+            CROP_BOTTOM=0
+            green "iPhone preset — crop 656px on each side."
+            ;;
+        3)
+            CROP_LEFT=0
+            CROP_RIGHT=0
+            CROP_TOP=0
+            CROP_BOTTOM=0
+            green "No crop — full frame."
+            ;;
+        4)
+            read -rp "  CROP_LEFT   [0]: " CROP_LEFT;   CROP_LEFT="${CROP_LEFT:-0}"
+            read -rp "  CROP_RIGHT  [0]: " CROP_RIGHT;  CROP_RIGHT="${CROP_RIGHT:-0}"
+            read -rp "  CROP_TOP    [0]: " CROP_TOP;    CROP_TOP="${CROP_TOP:-0}"
+            read -rp "  CROP_BOTTOM [0]: " CROP_BOTTOM; CROP_BOTTOM="${CROP_BOTTOM:-0}"
+            for v in "$CROP_LEFT" "$CROP_RIGHT" "$CROP_TOP" "$CROP_BOTTOM"; do
+                [[ "$v" =~ ^[0-9]+$ ]] || { red "Values must be non-negative integers."; exit 1; }
+            done
+            if (( CROP_LEFT + CROP_RIGHT >= 1920 )); then
+                red "CROP_LEFT + CROP_RIGHT must be < 1920."; exit 1
+            fi
+            if (( CROP_TOP + CROP_BOTTOM >= 1080 )); then
+                red "CROP_TOP + CROP_BOTTOM must be < 1080."; exit 1
+            fi
+            green "Custom crop: L=$CROP_LEFT R=$CROP_RIGHT T=$CROP_TOP B=$CROP_BOTTOM"
+            ;;
+        *)
+            red "Invalid choice."
+            exit 1
+            ;;
+    esac
+}
+
+# -----------------------------------------------------------------------------
+# Step 5: Write config
+# -----------------------------------------------------------------------------
+write_config() {
+    header "Step 5: Writing config"
+
+    mkdir -p "$CONFIG_DIR"
+
+    if [[ -f "$CONFIG_FILE" ]]; then
+        local backup
+        backup="$CONFIG_FILE.bak.$(date +%Y%m%d-%H%M%S)"
+        cp "$CONFIG_FILE" "$backup"
+        yellow "Existing config backed up to $backup"
+    fi
+
+    cat > "$CONFIG_FILE" <<EOF
+# rpi-hdmi-rotator configuration
+# Generated by setup.sh v$VERSION on $(date -Iseconds)
+
+DEVICE="$DEVICE"
+INPUT_FORMAT="NV12"
+INPUT_WIDTH=1920
+INPUT_HEIGHT=1080
+FRAMERATE=30
+
+CROP_LEFT=$CROP_LEFT
+CROP_RIGHT=$CROP_RIGHT
+CROP_TOP=$CROP_TOP
+CROP_BOTTOM=$CROP_BOTTOM
+
+ROTATION="$ROTATION"
+
+CONNECTOR_ID=$CONNECTOR_ID
+OUTPUT_WIDTH=1920
+OUTPUT_HEIGHT=1080
+
+DEVICE_WAIT_SECONDS=3
+EOF
+    chmod 0644 "$CONFIG_FILE"
+    green "Config written to $CONFIG_FILE"
+}
+
+# -----------------------------------------------------------------------------
+# Step 6: Test run
+# -----------------------------------------------------------------------------
+test_run() {
+    header "Step 6: Live test"
+
+    echo "Running the final pipeline for 10 seconds..."
+
+    local pipeline=(
+        gst-launch-1.0
+        v4l2src "device=$DEVICE" "io-mode=mmap"
+        "!" "video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1"
+    )
+    if (( CROP_LEFT > 0 || CROP_RIGHT > 0 || CROP_TOP > 0 || CROP_BOTTOM > 0 )); then
+        pipeline+=(
+            "!" videocrop
+            "left=$CROP_LEFT" "right=$CROP_RIGHT"
+            "top=$CROP_TOP" "bottom=$CROP_BOTTOM"
+        )
+    fi
+    if [[ "$ROTATION" != "none" ]]; then
+        pipeline+=( "!" videoflip "method=$ROTATION" )
+    fi
+    pipeline+=(
+        "!" videoscale "add-borders=false"
+        "!" "video/x-raw,width=1920,height=1080,pixel-aspect-ratio=1/1"
+        "!" videoconvert
+        "!" kmssink "sync=false" "connector-id=$CONNECTOR_ID"
+    )
+
+    if ! launch_gst_bg "${pipeline[@]}"; then
+        red "Live test failed. Review /tmp/rotator-setup.log for details."
+        return 1
+    fi
+
+    sleep 10
+    cleanup_gst
+
+    local answer
+    read -rp "Did the live feed look correct? [y/N] " answer
+    case "$answer" in
+        y|Y) green "Live test confirmed OK." ;;
+        *)   yellow "Re-run $0 to adjust settings."; return 1 ;;
+    esac
+}
+
+# -----------------------------------------------------------------------------
+# Step 7: Finalize
+# -----------------------------------------------------------------------------
+finalize() {
+    header "Step 7: Service"
+
+    systemctl enable "$SERVICE_NAME" >/dev/null 2>&1 || true
+
+    local answer
+    if [[ "${SERVICE_WAS_RUNNING:-0}" -eq 1 ]]; then
+        read -rp "Restart $SERVICE_NAME now? [Y/n] " answer
+    else
+        read -rp "Start $SERVICE_NAME now? [Y/n] " answer
+    fi
+    case "$answer" in
+        n|N) yellow "Service not started. Run: sudo systemctl start $SERVICE_NAME" ;;
+        *)
+            systemctl restart "$SERVICE_NAME"
+            sleep 1
+            if systemctl is-active --quiet "$SERVICE_NAME"; then
+                green "Service is running."
+            else
+                red "Service failed to start. Check: journalctl -u $SERVICE_NAME -n 20"
+            fi
+            ;;
+    esac
+}
+
+# -----------------------------------------------------------------------------
+# Main flow
+# -----------------------------------------------------------------------------
+main() {
+    header "rpi-hdmi-rotator setup wizard v$VERSION"
+    echo "This wizard will detect hardware, calibrate rotation, and write $CONFIG_FILE."
+    echo
+
+    detect_capture_device
+    detect_connector
+    calibrate_rotation
+    select_source_preset
+    write_config
+    test_run || yellow "Test run not confirmed — config still saved."
+    finalize
+
+    header "Done"
+    green "Setup complete. Diagnose anytime with:"
+    echo "  /opt/rpi-hdmi-rotator/bin/diagnose.sh"
+}
+
+main

@@ -65,18 +65,34 @@ For a silent boot (no login prompt, no kernel messages):
 sudo ./install.sh --silent-boot
 ```
 
-After install:
+The installer runs an interactive setup wizard at the end that:
 
-1. Edit `/etc/rpi-hdmi-rotator/rotator.conf` to match your capture device
-   and monitor rotation direction.
-2. Run diagnostics: `/opt/rpi-hdmi-rotator/bin/diagnose.sh`
-3. Start the service: `sudo systemctl start rpi-hdmi-rotator`
-4. Verify it appears on boot: `sudo reboot`
+1. Detects your USB capture device automatically
+2. Detects the active HDMI connector automatically
+3. Calibrates the rotation direction by showing a test pattern and asking
+   which direction looks correct
+4. Asks about your source (iPhone 15 Pro Max+, other iPhone, full-frame,
+   or custom) and sets letterbox crop values accordingly
+5. Writes `/etc/rpi-hdmi-rotator/rotator.conf`
+6. Runs the live pipeline for 10 seconds so you can confirm it looks right
+7. Starts the service
+
+To skip the wizard and configure manually, use `--non-interactive`.
+
+Re-run the wizard any time:
+
+```bash
+sudo /opt/rpi-hdmi-rotator/bin/setup.sh
+```
 
 ## Configuration
 
-The defaults target the iPhone + Cam Link 4K + physically-CW-rotated
-Samsung 1080p monitor setup. Key parameters in `rotator.conf`:
+The recommended way to configure is the setup wizard
+(`sudo /opt/rpi-hdmi-rotator/bin/setup.sh`). The defaults target the iPhone
+15 Pro Max + Cam Link 4K + physically-rotated Samsung 1080p monitor setup.
+
+Manual editing of `/etc/rpi-hdmi-rotator/rotator.conf` is also supported.
+Key parameters:
 
 | Parameter | Purpose |
 |-----------|---------|

@@ -1,15 +1,18 @@
 #!/bin/bash
 # rpi-hdmi-rotator — installer.
 # Installs dependencies, files, and the systemd service.
-# Usage: sudo ./install.sh [--silent-boot]
-#   --silent-boot  Also apply quiet-boot tweaks (disable getty, quiet cmdline).
+# Usage: sudo ./install.sh [--silent-boot] [--non-interactive]
+#   --silent-boot      Also apply quiet-boot tweaks (disable getty, quiet cmdline).
+#   --non-interactive  Skip the interactive setup wizard at the end.
 
 set -euo pipefail
 
 SILENT_BOOT=0
+NON_INTERACTIVE=0
 for arg in "$@"; do
     case "$arg" in
         --silent-boot) SILENT_BOOT=1 ;;
+        --non-interactive) NON_INTERACTIVE=1 ;;
         -h|--help)
             sed -n '1,10p' "$0"
             exit 0
@@ -45,6 +48,7 @@ echo "==> Copying files to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/bin"
 install -m 0755 "$REPO_DIR/bin/rotator.sh"  "$INSTALL_DIR/bin/rotator.sh"
 install -m 0755 "$REPO_DIR/bin/diagnose.sh" "$INSTALL_DIR/bin/diagnose.sh"
+install -m 0755 "$REPO_DIR/bin/setup.sh"    "$INSTALL_DIR/bin/setup.sh"
 
 echo "==> Setting up config at $CONFIG_DIR"
 mkdir -p "$CONFIG_DIR"
@@ -84,8 +88,15 @@ fi
 echo
 echo "Install complete."
 echo
-echo "Next steps:"
-echo "  1. Review  /etc/rpi-hdmi-rotator/rotator.conf"
-echo "  2. Verify  /opt/rpi-hdmi-rotator/bin/diagnose.sh"
-echo "  3. Start   sudo systemctl start $SERVICE_NAME"
-echo "  4. Reboot if silent-boot was applied or cmdline.txt changed"
+
+# Auto-launch the wizard if we have a TTY and the user didn't opt out.
+if [[ -t 0 && $NON_INTERACTIVE -eq 0 ]]; then
+    echo "==> Launching interactive setup wizard"
+    "$INSTALL_DIR/bin/setup.sh"
+else
+    echo "Next steps:"
+    echo "  1. Run setup:  sudo /opt/rpi-hdmi-rotator/bin/setup.sh"
+    echo "  2. Diagnose:   /opt/rpi-hdmi-rotator/bin/diagnose.sh"
+    echo "  3. Start:      sudo systemctl start $SERVICE_NAME"
+    echo "  4. Reboot if silent-boot was applied or cmdline.txt changed"
+fi
