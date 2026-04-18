@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.0"
+VERSION="1.3.1"
 if [[ "${1:-}" == "--version" ]]; then
     echo "rpi-hdmi-rotator setup $VERSION"
     exit 0
@@ -277,24 +277,22 @@ calibrate_rotation() {
 # -----------------------------------------------------------------------------
 # Step 4: Source preset selection
 # -----------------------------------------------------------------------------
-select_source_preset() {
-    header "Step 4: Source preset (letterbox crop)"
-
+show_iphone_diagram() {
     cat <<'DIAGRAM'
 
-  ◄────────────── 1920px ────────────────►
+  ◄────────────── 1920px ──────────────►
             ┌────────────────┐            ▲
   ┌─────────┤────────────────┤─────────┐  │
   │░░░░░░░░░│                │░░░░░░░░░│  │
   │░░░░░░░░░│                │░░░░░░░░░│  │
-  │░░░░░░░░░│                │░░░░░░░░░│  │
-  │░░░░░░░░░│                │░░░░░░░░░│  │
-  │░░░░░░░░░│                │░░░░░░░░░│  │
-  │░ BLACK ░│    iPhone      │░ BLACK ░│  1080px
-  │░ 656px ░│  content 608px │░ 656px ░│  │
-  │░░░░░░░░░│                │░░░░░░░░░│  │
-  │░░░░░░░░░│                │░░░░░░░░░│  │
-  │░░░░░░░░░│                │░░░░░░░░░│  │
+  │░░░░░░░░░│                │░░░░░░░░░│
+  │░░░░░░░░░│                │░░░░░░░░░│  1
+  │░░░░░░░░░│                │░░░░░░░░░│  0
+  │░ BLACK ░│    iPhone      │░ BLACK ░│  8
+  │░ 656px ░│  content 608px │░ 656px ░│  0
+  │░░░░░░░░░│                │░░░░░░░░░│  p
+  │░░░░░░░░░│                │░░░░░░░░░│  x
+  │░░░░░░░░░│                │░░░░░░░░░│
   │░░░░░░░░░│                │░░░░░░░░░│  │
   │░░░░░░░░░│                │░░░░░░░░░│  │
   └─────────┤────────────────┤─────────┘  │
@@ -304,6 +302,64 @@ select_source_preset() {
             └───── crop ─────┘
 
 DIAGRAM
+}
+
+show_fullframe_diagram() {
+    cat <<'DIAGRAM'
+
+  ◄──── 1920px ────►
+  ┌────────────────┐
+  ├────────────────┤  ▲
+  │░░            ░░│  │
+  │░░            ░░│  │
+  │░░            ░░│
+  │░░            ░░│  1
+  │░░            ░░│  0
+  │░░    Full    ░░│  8
+  │░░   Frame    ░░│  0
+  │░░            ░░│  p
+  │░░            ░░│  x
+  │░░            ░░│
+  │░░            ░░│  │
+  │░░            ░░│  │
+  ├────────────────┤  ▼
+  └────────────────┘
+         │  │
+  ▲    ──┴──┴──    ▲
+  └─── no crop ────┘
+
+DIAGRAM
+}
+
+show_custom_diagram() {
+    cat <<'DIAGRAM'
+
+    ◄────────────── 1920px ──────────────►
+              ┌────────────────┐            ▲
+    ┌─────────┤────────────────┤─────────┐  │
+    │░░░░░░░░░│░░░░░░░░░░░░░░░░│░░░░░░░░░│  │
+    │░░░░░░░░░│░░░░░░░░░░░░░░░░│░░░░░░░░░│  │
+┌►  │░░░░░░░░░│                │░░░░░░░░░│
+│   │░░░░░░░░░│                │░░░░░░░░░│  1
+c   │░░░░░░░░░│                │░░░░░░░░░│  0
+r   │░░░░░░░░░│     Custom     │░░░░░░░░░│  8
+o   │░░░░░░░░░│      Crop      │░░░░░░░░░│  0
+p   │░░░░░░░░░│                │░░░░░░░░░│  p
+│   │░░░░░░░░░│                │░░░░░░░░░│  x
+└►  │░░░░░░░░░│                │░░░░░░░░░│
+    │░░░░░░░░░│░░░░░░░░░░░░░░░░│░░░░░░░░░│  │
+    │░░░░░░░░░│░░░░░░░░░░░░░░░░│░░░░░░░░░│  │
+    └─────────┤────────────────┤─────────┘  │
+              └────────────────┘            ▼
+                     │  │
+              ▲    ──┴──┴──    ▲
+              └───── crop ─────┘
+
+DIAGRAM
+}
+
+select_source_preset() {
+    header "Step 4: Source preset (letterbox crop)"
 
     echo "iPhones send portrait content letterboxed inside a 1920x1080 landscape"
     echo "frame. The crop values remove the black bars so the content fills the"
@@ -326,6 +382,7 @@ DIAGRAM
             CROP_RIGHT=656
             CROP_TOP=0
             CROP_BOTTOM=0
+            show_iphone_diagram
             green "iPhone preset — crop 656px on each side."
             ;;
         3)
@@ -333,9 +390,11 @@ DIAGRAM
             CROP_RIGHT=0
             CROP_TOP=0
             CROP_BOTTOM=0
+            show_fullframe_diagram
             green "No crop — full frame."
             ;;
         4)
+            show_custom_diagram
             echo
             echo "Enter pixels to remove from each edge of the 1920x1080 source."
             echo "Reference: iPhone 9:16 letterbox = 656 left + 656 right."
