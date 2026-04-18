@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-VERSION="1.2.2"
+VERSION="1.3.0"
 if [[ "${1:-}" == "--version" ]]; then
     echo "rpi-hdmi-rotator setup $VERSION"
     exit 0
@@ -279,6 +279,31 @@ calibrate_rotation() {
 # -----------------------------------------------------------------------------
 select_source_preset() {
     header "Step 4: Source preset (letterbox crop)"
+
+    cat <<'DIAGRAM'
+
+  ◄────────────── 1920px ────────────────►
+            ┌────────────────┐            ▲
+  ┌─────────┤────────────────┤─────────┐  │
+  │░░░░░░░░░│                │░░░░░░░░░│  │
+  │░░░░░░░░░│                │░░░░░░░░░│  │
+  │░░░░░░░░░│                │░░░░░░░░░│  │
+  │░░░░░░░░░│                │░░░░░░░░░│  │
+  │░░░░░░░░░│                │░░░░░░░░░│  │
+  │░ BLACK ░│    iPhone      │░ BLACK ░│  1080px
+  │░ 656px ░│  content 608px │░ 656px ░│  │
+  │░░░░░░░░░│                │░░░░░░░░░│  │
+  │░░░░░░░░░│                │░░░░░░░░░│  │
+  │░░░░░░░░░│                │░░░░░░░░░│  │
+  │░░░░░░░░░│                │░░░░░░░░░│  │
+  │░░░░░░░░░│                │░░░░░░░░░│  │
+  └─────────┤────────────────┤─────────┘  │
+            └────────────────┘            ▼
+                   │  │
+            ▲    ──┴──┴──    ▲
+            └───── crop ─────┘
+
+DIAGRAM
 
     echo "iPhones send portrait content letterboxed inside a 1920x1080 landscape"
     echo "frame. The crop values remove the black bars so the content fills the"
