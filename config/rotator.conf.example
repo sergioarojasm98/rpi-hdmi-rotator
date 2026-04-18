@@ -4,8 +4,12 @@
 # --- Capture source (USB video device) ---
 DEVICE="/dev/video0"
 
-# Input format and resolution from the capture device.
-# For the Cam Link 4K, NV12 1080p@30 is the zero-copy optimum.
+# Input encoding from the capture device:
+#   raw   — uncompressed stream (Cam Link 4K and other USB 3.0 cards)
+#           Use INPUT_FORMAT=NV12 (zero-copy) or YUY2.
+#   mjpeg — compressed MJPEG (MS2109 cheap USB 2.0 sticks)
+#           INPUT_FORMAT is ignored; a jpegdec is inserted in the pipeline.
+INPUT_ENCODING="raw"
 INPUT_FORMAT="NV12"
 INPUT_WIDTH=1920
 INPUT_HEIGHT=1080

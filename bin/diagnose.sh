@@ -30,7 +30,11 @@ if [[ -f "$CONFIG_FILE" ]]; then
     # shellcheck source=/dev/null
     source "$CONFIG_FILE"
     echo "  DEVICE=${DEVICE:-}"
-    echo "  INPUT=${INPUT_FORMAT:-}/${INPUT_WIDTH:-}x${INPUT_HEIGHT:-}@${FRAMERATE:-}"
+    if [[ "${INPUT_ENCODING:-raw}" == "mjpeg" ]]; then
+        echo "  INPUT=MJPEG/${INPUT_WIDTH:-}x${INPUT_HEIGHT:-}@${FRAMERATE:-}  (CPU decode)"
+    else
+        echo "  INPUT=${INPUT_FORMAT:-}/${INPUT_WIDTH:-}x${INPUT_HEIGHT:-}@${FRAMERATE:-}  (raw, zero-copy)"
+    fi
     echo "  CROP=L${CROP_LEFT:-0} R${CROP_RIGHT:-0} T${CROP_TOP:-0} B${CROP_BOTTOM:-0}"
     echo "  ROTATION=${ROTATION:-}"
     echo "  OUTPUT=${OUTPUT_WIDTH:-}x${OUTPUT_HEIGHT:-}"

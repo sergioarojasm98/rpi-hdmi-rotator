@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.4.0"
 if [[ "${1:-}" == "--version" ]]; then
     echo "rpi-hdmi-rotator $VERSION"
     exit 0
@@ -23,6 +23,7 @@ source "$CONFIG_FILE"
 
 # Apply sensible defaults for any missing values.
 : "${DEVICE:=/dev/video0}"
+: "${INPUT_ENCODING:=raw}"
 : "${INPUT_FORMAT:=NV12}"
 : "${INPUT_WIDTH:=1920}"
 : "${INPUT_HEIGHT:=1080}"
@@ -52,6 +53,10 @@ validate_config() {
         clockwise|counterclockwise|rotate-180|none) ;;
         *) die "ROTATION must be clockwise|counterclockwise|rotate-180|none (got '$ROTATION')" ;;
     esac
+    case "$INPUT_ENCODING" in
+        raw|mjpeg) ;;
+        *) die "INPUT_ENCODING must be raw or mjpeg (got '$INPUT_ENCODING')" ;;
+    esac
 }
 
 validate_config
@@ -74,7 +79,16 @@ build_pipeline() {
 
     # Source
     pipeline+=( "v4l2src" "device=$DEVICE" "io-mode=mmap" )
-    pipeline+=( "!" "video/x-raw,format=$INPUT_FORMAT,width=$INPUT_WIDTH,height=$INPUT_HEIGHT,framerate=$FRAMERATE/1" )
+
+    if [[ "$INPUT_ENCODING" == "mjpeg" ]]; then
+        # USB 2.0 capture sticks (MS2109 etc.) — compressed MJPEG from the card,
+        # decoded on CPU. Pi4 has plenty of headroom for 1080p30.
+        pipeline+=( "!" "image/jpeg,width=$INPUT_WIDTH,height=$INPUT_HEIGHT,framerate=$FRAMERATE/1" )
+        pipeline+=( "!" "jpegdec" )
+    else
+        # USB 3.0 raw capture (Cam Link 4K etc.) — zero-copy, no decode needed.
+        pipeline+=( "!" "video/x-raw,format=$INPUT_FORMAT,width=$INPUT_WIDTH,height=$INPUT_HEIGHT,framerate=$FRAMERATE/1" )
+    fi
 
     # Crop (only if non-zero)
     if [[ "$CROP_LEFT" -gt 0 || "$CROP_RIGHT" -gt 0 || "$CROP_TOP" -gt 0 || "$CROP_BOTTOM" -gt 0 ]]; then

@@ -47,9 +47,17 @@ rotation in viewing space.
 ## Hardware tested
 
 - Raspberry Pi 4 Model B (4GB)
-- Elgato Cam Link 4K (USB 3.0)
 - Samsung 1920x1080 monitor, physically rotated 90°
-- iPhone source via USB-C → HDMI adapter
+- iPhone 15 Pro Max via USB-C → HDMI adapter
+
+Capture card options:
+
+| Card | Bus | Encoding | Price | Notes |
+|------|-----|----------|-------|-------|
+| Elgato Cam Link 4K | USB 3.0 | Raw NV12/YUYV | ~$130 | Zero-copy, lowest latency |
+| Generic MS2109 | USB 2.0 | MJPEG only | ~$15-30 | CPU decode, Pi4 has ample headroom |
+
+Both are auto-detected by the setup wizard.
 
 ## Install
 
