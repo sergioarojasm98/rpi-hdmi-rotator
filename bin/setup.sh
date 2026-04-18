@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.1"
+VERSION="1.3.2"
 if [[ "${1:-}" == "--version" ]]; then
     echo "rpi-hdmi-rotator setup $VERSION"
     exit 0
@@ -367,9 +367,8 @@ select_source_preset() {
     echo
     echo "Select your source:"
     echo "  1) iPhone 15 Pro Max or later (USB-C) — crop 656px sides  [default]"
-    echo "  2) Other iPhone with USB-C HDMI adapter — same crop"
-    echo "  3) Full-frame source (no letterbox, no crop)"
-    echo "  4) Custom crop values"
+    echo "  2) Full-frame source (no letterbox, no crop)"
+    echo "  3) Custom crop values"
     echo
 
     local choice
@@ -377,7 +376,7 @@ select_source_preset() {
     choice="${choice:-1}"
 
     case "$choice" in
-        1|2)
+        1)
             CROP_LEFT=656
             CROP_RIGHT=656
             CROP_TOP=0
@@ -385,7 +384,7 @@ select_source_preset() {
             show_iphone_diagram
             green "iPhone preset — crop 656px on each side."
             ;;
-        3)
+        2)
             CROP_LEFT=0
             CROP_RIGHT=0
             CROP_TOP=0
@@ -393,7 +392,7 @@ select_source_preset() {
             show_fullframe_diagram
             green "No crop — full frame."
             ;;
-        4)
+        3)
             show_custom_diagram
             echo
             echo "Enter pixels to remove from each edge of the 1920x1080 source."

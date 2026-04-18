@@ -71,8 +71,8 @@ The installer runs an interactive setup wizard at the end that:
 2. Detects the active HDMI connector automatically
 3. Calibrates the rotation direction by showing a test pattern and asking
    which direction looks correct
-4. Asks about your source (iPhone 15 Pro Max+, other iPhone, full-frame,
-   or custom) and sets letterbox crop values accordingly
+4. Asks about your source (iPhone 15 Pro Max+, full-frame, or custom)
+   and sets letterbox crop values accordingly
 5. Writes `/etc/rpi-hdmi-rotator/rotator.conf`
 6. Runs the live pipeline for 10 seconds so you can confirm it looks right
 7. Starts the service
