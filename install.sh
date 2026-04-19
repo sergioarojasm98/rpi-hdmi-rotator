@@ -64,6 +64,21 @@ install -m 0644 "$REPO_DIR/systemd/$SERVICE_NAME" "/etc/systemd/system/$SERVICE_
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 
+echo "==> Enabling higher USB current limit"
+# Pi4 defaults to 600mA shared across all USB ports. USB capture cards
+# (especially MS2109-based cheap sticks) can exceed this and disconnect
+# every 10-15 seconds. Raises the per-port limit to 1.2A.
+CONFIG_TXT="/boot/firmware/config.txt"
+if [[ -f "$CONFIG_TXT" ]]; then
+    if ! grep -q "^usb_max_current_enable=1" "$CONFIG_TXT"; then
+        echo "usb_max_current_enable=1" >> "$CONFIG_TXT"
+        echo "    Added usb_max_current_enable=1 — reboot required for this to take effect"
+        NEEDS_REBOOT=1
+    else
+        echo "    Already enabled"
+    fi
+fi
+
 if [[ $SILENT_BOOT -eq 1 ]]; then
     echo "==> Applying silent-boot tweaks"
 
@@ -87,6 +102,9 @@ fi
 
 echo
 echo "Install complete."
+if [[ "${NEEDS_REBOOT:-0}" -eq 1 ]]; then
+    echo "⚠ Reboot required to enable higher USB current limit."
+fi
 echo
 
 # Auto-launch the wizard if we have a TTY and the user didn't opt out.

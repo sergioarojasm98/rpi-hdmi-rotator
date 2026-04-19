@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-VERSION="1.4.0"
+VERSION="1.4.2"
 if [[ "${1:-}" == "--version" ]]; then
     echo "rpi-hdmi-rotator $VERSION"
     exit 0

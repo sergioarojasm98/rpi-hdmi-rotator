@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-VERSION="1.4.0"
+VERSION="1.4.2"
 if [[ "${1:-}" == "--version" ]]; then
     echo "rpi-hdmi-rotator setup $VERSION"
     exit 0
@@ -269,6 +269,48 @@ detect_connector() {
 }
 
 # -----------------------------------------------------------------------------
+# Step 2b: Display PAR correction (for monitors with inaccurate EDID)
+# -----------------------------------------------------------------------------
+#
+# Some monitors report wrong physical dimensions in EDID, causing kmssink to
+# apply aspect-ratio correction and render to a smaller CRTC region (e.g.
+# 1800x1080+60+0 instead of 1920x1080+0+0). On a physically-rotated monitor
+# this shows as content cut at top and bottom.
+#
+# The fix is to set pixel-aspect-ratio on the pipeline output caps to a value
+# that cancels the EDID correction kmssink applies. Empirically 16/15 works
+# for many monitors regardless of their specific EDID.
+detect_display_par() {
+    header "Step 2b: Display aspect correction"
+
+    local physical_size
+    physical_size=$(modetest -M vc4 -c 2>/dev/null | awk -v id="$CONNECTOR_ID" '$1 == id && $3 == "connected" {print $5; exit}')
+
+    if [[ -n "$physical_size" && "$physical_size" =~ ^([0-9]+)x([0-9]+)$ ]]; then
+        local w_mm="${BASH_REMATCH[1]}"
+        local h_mm="${BASH_REMATCH[2]}"
+        local aspect
+        # Use awk for floating-point math (bash does integer only).
+        aspect=$(awk -v w="$w_mm" -v h="$h_mm" 'BEGIN { printf "%.3f", w/h }')
+        echo "Monitor reports physical size: ${w_mm}x${h_mm} mm (aspect $aspect)"
+        local target="1.778"  # true 16:9
+        local within
+        within=$(awk -v a="$aspect" -v t="$target" 'BEGIN { print (a - t < 0.01 && t - a < 0.01) ? 1 : 0 }')
+        if [[ "$within" == "1" ]]; then
+            DISPLAY_PAR="1/1"
+            green "EDID looks accurate — using DISPLAY_PAR=1/1"
+        else
+            DISPLAY_PAR="16/15"
+            yellow "EDID aspect $aspect differs from true 16:9 ($target) — using DISPLAY_PAR=16/15 to prevent letterboxing"
+        fi
+    else
+        # No physical size reported — safest default
+        DISPLAY_PAR="16/15"
+        yellow "Cannot read EDID physical size — defaulting DISPLAY_PAR=16/15"
+    fi
+}
+
+# -----------------------------------------------------------------------------
 # Step 3: Rotation calibration
 # -----------------------------------------------------------------------------
 calibrate_rotation() {
@@ -523,6 +565,7 @@ ROTATION="$ROTATION"
 CONNECTOR_ID=$CONNECTOR_ID
 OUTPUT_WIDTH=1920
 OUTPUT_HEIGHT=1080
+DISPLAY_PAR="$DISPLAY_PAR"
 
 DEVICE_WAIT_SECONDS=3
 EOF
@@ -662,6 +705,7 @@ main() {
     detect_capture_device
     detect_input_format
     detect_connector
+    detect_display_par
     calibrate_rotation
     select_source_preset
     write_config
