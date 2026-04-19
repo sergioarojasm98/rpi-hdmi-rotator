@@ -36,6 +36,7 @@ source "$CONFIG_FILE"
 : "${CONNECTOR_ID:=}"
 : "${OUTPUT_WIDTH:=1920}"
 : "${OUTPUT_HEIGHT:=1080}"
+: "${DISPLAY_PAR:=1/1}"
 : "${DEVICE_WAIT_SECONDS:=3}"
 
 log() { echo "[rotator] $*"; }
@@ -103,7 +104,7 @@ build_pipeline() {
     # Scale to output resolution without preserving aspect (fills display;
     # the stretch compensates for the physical rotation of the monitor).
     pipeline+=( "!" "videoscale" "add-borders=false" )
-    pipeline+=( "!" "video/x-raw,width=$OUTPUT_WIDTH,height=$OUTPUT_HEIGHT,pixel-aspect-ratio=1/1" )
+    pipeline+=( "!" "video/x-raw,width=$OUTPUT_WIDTH,height=$OUTPUT_HEIGHT,pixel-aspect-ratio=$DISPLAY_PAR" )
     pipeline+=( "!" "videoconvert" )
 
     # Display via KMS/DRM

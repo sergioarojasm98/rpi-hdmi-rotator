@@ -41,6 +41,13 @@ CONNECTOR_ID=33
 OUTPUT_WIDTH=1920
 OUTPUT_HEIGHT=1080
 
+# --- Display pixel aspect ratio ---
+# Some monitors report incorrect physical dimensions in EDID, causing
+# kmssink to add letterboxing. Use modetest -M vc4 -c to check the
+# reported size (mm). If your image is cropped or offset, adjust this
+# value. Default 1/1 means square pixels. Common fix: 16/15.
+DISPLAY_PAR="1/1"
+
 # --- Retry behaviour ---
 # Seconds to wait between retries when the capture device is missing.
 DEVICE_WAIT_SECONDS=3
